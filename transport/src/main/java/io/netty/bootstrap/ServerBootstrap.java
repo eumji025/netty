@@ -69,6 +69,7 @@ public class ServerBootstrap extends AbstractBootstrap<ServerBootstrap, ServerCh
      */
     @Override
     public ServerBootstrap group(EventLoopGroup group) {
+        //如果只制定一个group，则父子使用同一个
         return group(group, group);
     }
 
@@ -78,6 +79,7 @@ public class ServerBootstrap extends AbstractBootstrap<ServerBootstrap, ServerCh
      * {@link Channel}'s.
      */
     public ServerBootstrap group(EventLoopGroup parentGroup, EventLoopGroup childGroup) {
+        //在父类中记录父group
         super.group(parentGroup);
         if (childGroup == null) {
             throw new NullPointerException("childGroup");
@@ -85,6 +87,7 @@ public class ServerBootstrap extends AbstractBootstrap<ServerBootstrap, ServerCh
         if (this.childGroup != null) {
             throw new IllegalStateException("childGroup set already");
         }
+        //子group设置到当前的类childGroup属性中
         this.childGroup = childGroup;
         return this;
     }
@@ -128,6 +131,8 @@ public class ServerBootstrap extends AbstractBootstrap<ServerBootstrap, ServerCh
 
     /**
      * Set the {@link ChannelHandler} which is used to serve the request for the {@link Channel}'s.
+     *
+     * 制定childGroup对应的childHandler
      */
     public ServerBootstrap childHandler(ChannelHandler childHandler) {
         if (childHandler == null) {
@@ -137,10 +142,16 @@ public class ServerBootstrap extends AbstractBootstrap<ServerBootstrap, ServerCh
         return this;
     }
 
+    /**
+     * 初始化channel
+     * @param channel 需要初始化的channel
+     * @throws Exception
+     */
     @Override
     void init(Channel channel) throws Exception {
         final Map<ChannelOption<?>, Object> options = options0();
         synchronized (options) {
+            //每个channel进行参数设置
             setChannelOptions(channel, options, logger);
         }
 
@@ -149,23 +160,28 @@ public class ServerBootstrap extends AbstractBootstrap<ServerBootstrap, ServerCh
             for (Entry<AttributeKey<?>, Object> e: attrs.entrySet()) {
                 @SuppressWarnings("unchecked")
                 AttributeKey<Object> key = (AttributeKey<Object>) e.getKey();
+                //设置每个属性对应的值
                 channel.attr(key).set(e.getValue());
             }
         }
 
         ChannelPipeline p = channel.pipeline();
 
+        //子group和handler处理
         final EventLoopGroup currentChildGroup = childGroup;
         final ChannelHandler currentChildHandler = childHandler;
         final Entry<ChannelOption<?>, Object>[] currentChildOptions;
         final Entry<AttributeKey<?>, Object>[] currentChildAttrs;
         synchronized (childOptions) {
+            //子参数记录
             currentChildOptions = childOptions.entrySet().toArray(newOptionArray(0));
         }
         synchronized (childAttrs) {
+            //子属性记录
             currentChildAttrs = childAttrs.entrySet().toArray(newAttrArray(0));
         }
 
+        //记录一个channelInitializer
         p.addLast(new ChannelInitializer<Channel>() {
             @Override
             public void initChannel(final Channel ch) throws Exception {
@@ -178,6 +194,7 @@ public class ServerBootstrap extends AbstractBootstrap<ServerBootstrap, ServerCh
                 ch.eventLoop().execute(new Runnable() {
                     @Override
                     public void run() {
+                        //设置一个ChannelHandler
                         pipeline.addLast(new ServerBootstrapAcceptor(
                                 ch, currentChildGroup, currentChildHandler, currentChildOptions, currentChildAttrs));
                     }

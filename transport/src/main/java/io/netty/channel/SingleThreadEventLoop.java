@@ -81,6 +81,12 @@ public abstract class SingleThreadEventLoop extends SingleThreadEventExecutor im
         return promise;
     }
 
+    /**
+     *
+     * @param channel 对应的是ServerBootStrap中对应注册的channel或者channelFactory对象
+     * @param promise
+     * @return
+     */
     @Deprecated
     @Override
     public ChannelFuture register(final Channel channel, final ChannelPromise promise) {

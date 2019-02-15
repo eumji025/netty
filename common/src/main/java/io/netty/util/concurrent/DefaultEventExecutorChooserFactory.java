@@ -29,6 +29,12 @@ public final class DefaultEventExecutorChooserFactory implements EventExecutorCh
 
     private DefaultEventExecutorChooserFactory() { }
 
+    /**
+     * 构建chooser 当执行器为2的倍数的时候创建{@link PowerOfTwoEventExecutorChooser}
+     * 否则创建一个chooser {@link GenericEventExecutorChooser}
+     * @param executors
+     * @return
+     */
     @SuppressWarnings("unchecked")
     @Override
     public EventExecutorChooser newChooser(EventExecutor[] executors) {
@@ -39,11 +45,15 @@ public final class DefaultEventExecutorChooserFactory implements EventExecutorCh
         }
     }
 
+    //判断是否为2的倍数
     private static boolean isPowerOfTwo(int val) {
         return (val & -val) == val;
     }
 
-    private static final class PowerOfTwoEventExecutorChooser implements EventExecutorChooser {
+    /**
+     * 二的倍数选择器，使用的atomicInteger和容量进行&操作选择
+     */
+   private static final class PowerOfTwoEventExecutorChooser implements EventExecutorChooser {
         private final AtomicInteger idx = new AtomicInteger();
         private final EventExecutor[] executors;
 
@@ -57,6 +67,9 @@ public final class DefaultEventExecutorChooserFactory implements EventExecutorCh
         }
     }
 
+    /**
+     * 通用executor选择器，使用的是atomicInteger来做余除来选择一个executor
+     */
     private static final class GenericEventExecutorChooser implements EventExecutorChooser {
         private final AtomicInteger idx = new AtomicInteger();
         private final EventExecutor[] executors;

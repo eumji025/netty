@@ -29,6 +29,8 @@ import java.util.concurrent.ThreadFactory;
 /**
  * Abstract base class for {@link EventLoopGroup} implementations that handles their tasks with multiple threads at
  * the same time.
+ *
+ * 多线程的时间循环组（类似于java并发包的多个调度器）
  */
 public abstract class MultithreadEventLoopGroup extends MultithreadEventExecutorGroup implements EventLoopGroup {
 
@@ -37,6 +39,7 @@ public abstract class MultithreadEventLoopGroup extends MultithreadEventExecutor
     private static final int DEFAULT_EVENT_LOOP_THREADS;
 
     static {
+        //从properties获取配置[io.netty.eventLoopThreads]的线程数，如果没配置则为1，否则在对比配置的数量和Runtime获取处理器的数量*2
         DEFAULT_EVENT_LOOP_THREADS = Math.max(1, SystemPropertyUtil.getInt(
                 "io.netty.eventLoopThreads", NettyRuntime.availableProcessors() * 2));
 
@@ -94,6 +97,7 @@ public abstract class MultithreadEventLoopGroup extends MultithreadEventExecutor
     @Deprecated
     @Override
     public ChannelFuture register(Channel channel, ChannelPromise promise) {
+        //next获取的是childExecutor默认对应的是NioEventLoop，然后进行注册
         return next().register(channel, promise);
     }
 }
