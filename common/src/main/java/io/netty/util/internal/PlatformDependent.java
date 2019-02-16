@@ -251,6 +251,8 @@ public final class PlatformDependent {
     /**
      * Return {@code true} if {@code sun.misc.Unsafe} was found on the classpath and can be used for accelerated
      * direct memory access.
+     *
+     * 通过是否存在获取unsafe的异常，真实获取unsafe在{@link PlatformDependent0#UNSAFE}
      */
     public static boolean hasUnsafe() {
         return UNSAFE_UNAVAILABILITY_CAUSE == null;
@@ -978,17 +980,17 @@ public final class PlatformDependent {
     }
 
     private static Throwable unsafeUnavailabilityCause0() {
-        if (isAndroid()) {
+        if (isAndroid()) {//判断是否为android
             logger.debug("sun.misc.Unsafe: unavailable (Android)");
             return new UnsupportedOperationException("sun.misc.Unsafe: unavailable (Android)");
         }
-        Throwable cause = PlatformDependent0.getUnsafeUnavailabilityCause();
+        Throwable cause = PlatformDependent0.getUnsafeUnavailabilityCause();//获取无法获取unsafe对象的错误原因
         if (cause != null) {
             return cause;
         }
 
         try {
-            boolean hasUnsafe = PlatformDependent0.hasUnsafe();
+            boolean hasUnsafe = PlatformDependent0.hasUnsafe();//是否存在unsafe
             logger.debug("sun.misc.Unsafe: {}", hasUnsafe ? "available" : "unavailable");
             return hasUnsafe ? null : PlatformDependent0.getUnsafeUnavailabilityCause();
         } catch (Throwable t) {

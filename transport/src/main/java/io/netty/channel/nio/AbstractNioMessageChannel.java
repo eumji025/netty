@@ -58,7 +58,7 @@ public abstract class AbstractNioMessageChannel extends AbstractNioChannel {
     private final class NioMessageUnsafe extends AbstractNioUnsafe {
 
         private final List<Object> readBuf = new ArrayList<Object>();
-
+        //read事件处理
         @Override
         public void read() {
             assert eventLoop().inEventLoop();
@@ -72,6 +72,7 @@ public abstract class AbstractNioMessageChannel extends AbstractNioChannel {
             try {
                 try {
                     do {
+                        //从readBuf读取本地
                         int localRead = doReadMessages(readBuf);
                         if (localRead == 0) {
                             break;
@@ -90,15 +91,17 @@ public abstract class AbstractNioMessageChannel extends AbstractNioChannel {
                 int size = readBuf.size();
                 for (int i = 0; i < size; i ++) {
                     readPending = false;
+                    //触发fireChannelRead事件 - 通过pipeline调用ServerBootstrapAcceptor的channelRead方法，然后在通过childHandler回调我们自定义的handler方法
                     pipeline.fireChannelRead(readBuf.get(i));
                 }
                 readBuf.clear();
                 allocHandle.readComplete();
+                //同理通过pipeline调用readComplate方法
                 pipeline.fireChannelReadComplete();
 
                 if (exception != null) {
                     closed = closeOnReadError(exception);
-
+                    //回调异常的方法
                     pipeline.fireExceptionCaught(exception);
                 }
 
@@ -116,7 +119,7 @@ public abstract class AbstractNioMessageChannel extends AbstractNioChannel {
                 //
                 // See https://github.com/netty/netty/issues/2254
                 if (!readPending && !config.isAutoRead()) {
-                    removeReadOp();
+                    removeReadOp();//移除read事件
                 }
             }
         }

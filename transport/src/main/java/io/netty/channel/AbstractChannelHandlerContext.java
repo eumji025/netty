@@ -122,15 +122,17 @@ abstract class AbstractChannelHandlerContext extends DefaultAttributeMap
 
     @Override
     public ChannelHandlerContext fireChannelRegistered() {
+        //递归调用 - 最终回调用我们自定义的handler
         invokeChannelRegistered(findContextInbound());
         return this;
     }
 
     static void invokeChannelRegistered(final AbstractChannelHandlerContext next) {
         EventExecutor executor = next.executor();
-        if (executor.inEventLoop()) {
+        if (executor.inEventLoop()) {//判断执行器是否在eventLoop中
+            //首先调用io.netty.channel.AbstractChannelHandlerContext.invokeChannelRegistered()
             next.invokeChannelRegistered();
-        } else {
+        } else {//否则使用executor的线程执行任务
             executor.execute(new Runnable() {
                 @Override
                 public void run() {
@@ -143,6 +145,7 @@ abstract class AbstractChannelHandlerContext extends DefaultAttributeMap
     private void invokeChannelRegistered() {
         if (invokeHandler()) {
             try {
+                //调用handler的channelRegistered方法
                 ((ChannelInboundHandler) handler()).channelRegistered(this);
             } catch (Throwable t) {
                 notifyHandlerException(t);
@@ -901,6 +904,10 @@ abstract class AbstractChannelHandlerContext extends DefaultAttributeMap
         return false;
     }
 
+    /**
+     * 获取ctx列表里第一个inbound类型的AbstractChannelHandlerContext
+     * @return
+     */
     private AbstractChannelHandlerContext findContextInbound() {
         AbstractChannelHandlerContext ctx = this;
         do {

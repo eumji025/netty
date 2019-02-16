@@ -15,6 +15,8 @@
  */
 package io.netty.channel;
 
+import io.netty.buffer.ByteBufAllocator;
+
 import java.util.ArrayList;
 import java.util.List;
 
@@ -31,6 +33,12 @@ import static java.lang.Math.min;
  * number of readable bytes if the read operation was not able to fill a certain
  * amount of the allocated buffer two times consecutively.  Otherwise, it keeps
  * returning the same prediction.
+ *
+ * 如果前一个read操作完全填满了分配的缓冲区，它将逐渐增加可读字节的预期数量。
+ * 如果读操作连续两次无法填充分配的缓冲区的某个数量，
+ * 则会逐渐减少可读字节的预期数量。否则，它会一直使用相同的预测。
+ *
+ * 具体分配的逻辑入口在 {@link HandleImpl#allocate(ByteBufAllocator)}方法
  */
 public class AdaptiveRecvByteBufAllocator extends DefaultMaxMessagesRecvByteBufAllocator {
 
@@ -43,16 +51,22 @@ public class AdaptiveRecvByteBufAllocator extends DefaultMaxMessagesRecvByteBufA
 
     private static final int[] SIZE_TABLE;
 
+    /**
+     * 初始化size_table 其目的就是构造有序的分配缓冲区大小的数组
+     * 用来决定下一次分配缓冲区大小的数组
+     */
     static {
         List<Integer> sizeTable = new ArrayList<Integer>();
+        //小于512的时候是每16递增一次
         for (int i = 16; i < 512; i += 16) {
             sizeTable.add(i);
         }
 
+        //大于等于512是每次翻倍
         for (int i = 512; i > 0; i <<= 1) {
             sizeTable.add(i);
         }
-
+        //记录到sizeTable
         SIZE_TABLE = new int[sizeTable.size()];
         for (int i = 0; i < SIZE_TABLE.length; i ++) {
             SIZE_TABLE[i] = sizeTable.get(i);
@@ -151,6 +165,8 @@ public class AdaptiveRecvByteBufAllocator extends DefaultMaxMessagesRecvByteBufA
      * Creates a new predictor with the default parameters.  With the default
      * parameters, the expected buffer size starts from {@code 1024}, does not
      * go down below {@code 64}, and does not go up above {@code 65536}.
+     *
+     * 设置最小值：64 默认初始值1024 最大值65536
      */
     public AdaptiveRecvByteBufAllocator() {
         this(DEFAULT_MINIMUM, DEFAULT_INITIAL, DEFAULT_MAXIMUM);

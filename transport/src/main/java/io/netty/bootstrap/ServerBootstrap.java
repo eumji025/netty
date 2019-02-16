@@ -194,7 +194,7 @@ public class ServerBootstrap extends AbstractBootstrap<ServerBootstrap, ServerCh
                 ch.eventLoop().execute(new Runnable() {
                     @Override
                     public void run() {
-                        //设置一个ChannelHandler
+                        //设置一个ChannelHandler -等同于reactor中第一个acceptor
                         pipeline.addLast(new ServerBootstrapAcceptor(
                                 ch, currentChildGroup, currentChildHandler, currentChildOptions, currentChildAttrs));
                     }
@@ -226,6 +226,10 @@ public class ServerBootstrap extends AbstractBootstrap<ServerBootstrap, ServerCh
         return new Map.Entry[size];
     }
 
+    /**
+     * 内部类，用来进行接收客户端事件并分发给childGroup
+     * @see #channelRead(ChannelHandlerContext, Object) 方法
+     */
     private static class ServerBootstrapAcceptor extends ChannelInboundHandlerAdapter {
 
         private final EventLoopGroup childGroup;
@@ -260,6 +264,7 @@ public class ServerBootstrap extends AbstractBootstrap<ServerBootstrap, ServerCh
         public void channelRead(ChannelHandlerContext ctx, Object msg) {
             final Channel child = (Channel) msg;
 
+            //给msg的channel的pipline注册ChannelHandler ===> 等同于我们在serverBoootStrap中定义的ChannelInitializer
             child.pipeline().addLast(childHandler);
 
             setChannelOptions(child, childOptions, logger);
@@ -269,6 +274,7 @@ public class ServerBootstrap extends AbstractBootstrap<ServerBootstrap, ServerCh
             }
 
             try {
+                //给child对应的EventLoopGroup进行注册，并添加完成监听器
                 childGroup.register(child).addListener(new ChannelFutureListener() {
                     @Override
                     public void operationComplete(ChannelFuture future) throws Exception {

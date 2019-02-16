@@ -26,6 +26,8 @@ import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 
 /**
+ * ChannelInboundHandler的特殊抽象实现，定义了channelHandler的调用逻辑，留下让我们自行注册channelHandler的 {@link #initChannel}方法
+ *
  * A special {@link ChannelInboundHandler} which offers an easy way to initialize a {@link Channel} once it was
  * registered to its {@link EventLoop}.
  *
@@ -67,6 +69,8 @@ public abstract class ChannelInitializer<C extends Channel> extends ChannelInbou
      * @throws Exception    is thrown if an error occurs. In that case it will be handled by
      *                      {@link #exceptionCaught(ChannelHandlerContext, Throwable)} which will by default close
      *                      the {@link Channel}.
+     *
+     *                      这是一个模板方法用来让我们注册真正的channelHandler的
      */
     protected abstract void initChannel(C ch) throws Exception;
 
@@ -75,9 +79,11 @@ public abstract class ChannelInitializer<C extends Channel> extends ChannelInbou
     public final void channelRegistered(ChannelHandlerContext ctx) throws Exception {
         // Normally this method will never be called as handlerAdded(...) should call initChannel(...) and remove
         // the handler.
+        //首先初始化channel 也就是我们常常会将自定义的channelHandler注册到pipeline的操作
         if (initChannel(ctx)) {
             // we called initChannel(...) so we need to call now pipeline.fireChannelRegistered() to ensure we not
             // miss an event.
+            //触发pipeline的channelHandler
             ctx.pipeline().fireChannelRegistered();
 
             // We are done with init the Channel, removing all the state for the Channel now.

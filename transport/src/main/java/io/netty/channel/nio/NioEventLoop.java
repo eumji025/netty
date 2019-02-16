@@ -418,6 +418,9 @@ public final class NioEventLoop extends SingleThreadEventLoop {
         }
     }
 
+    /**
+     * 我们的执行器内部执行的run方法逻辑，目的就是等待客户端的事件发送
+     */
     @Override
     protected void run() {
         for (;;) {
@@ -470,6 +473,7 @@ public final class NioEventLoop extends SingleThreadEventLoop {
                 } catch (IOException e) {
                     // If we receive an IOException here its because the Selector is messed up. Let's rebuild
                     // the selector and retry. https://github.com/netty/netty/issues/8566
+                    //重新构建selector 貌似因为JDK的bug
                     rebuildSelector0();
                     handleLoopException(e);
                     continue;
@@ -477,6 +481,7 @@ public final class NioEventLoop extends SingleThreadEventLoop {
 
                 cancelledKeys = 0;
                 needsToSelectAgain = false;
+                //这里的ioRatio貌似只执行的时间
                 final int ioRatio = this.ioRatio;
                 if (ioRatio == 100) {
                     try {
@@ -608,7 +613,7 @@ public final class NioEventLoop extends SingleThreadEventLoop {
 
             final Object a = k.attachment();
 
-            if (a instanceof AbstractNioChannel) {
+            if (a instanceof AbstractNioChannel) {//如果是nioChannel则之间调用
                 processSelectedKey(k, (AbstractNioChannel) a);
             } else {
                 @SuppressWarnings("unchecked")

@@ -42,6 +42,14 @@ import java.util.concurrent.atomic.AtomicReferenceFieldUpdater;
 /**
  * The default {@link ChannelPipeline} implementation.  It is usually created
  * by a {@link Channel} implementation when the {@link Channel} is created.
+ *
+ * ChannelPipeline的默认实现
+ * 内部维护了一个ChannelHandlerContext双向的链表
+ * 用来触发channel对应的register、active、read方法
+ * 1、当channel注册到selector时，触发pipeline的fireChannelRegistered方法。
+ * 2、当channel的socket绑定完成时，触发pipeline的fireChannelActive方法。
+ * 3、当有客户端请求时，触发pipeline的fireChannelRead方法。
+ * 4、当本次客户端请求，pipeline执行完fireChannelRead，触发pipeline的fireChannelReadComplete方法。
  */
 public class DefaultChannelPipeline implements ChannelPipeline {
 
@@ -821,6 +829,7 @@ public class DefaultChannelPipeline implements ChannelPipeline {
 
     @Override
     public final ChannelPipeline fireChannelRegistered() {
+        //从head开始调用
         AbstractChannelHandlerContext.invokeChannelRegistered(head);
         return this;
     }
@@ -1378,6 +1387,7 @@ public class DefaultChannelPipeline implements ChannelPipeline {
         @Override
         public void channelRegistered(ChannelHandlerContext ctx) {
             invokeHandlerAddedIfNeeded();
+            //调用ctx的fireChannelRegistered
             ctx.fireChannelRegistered();
         }
 
