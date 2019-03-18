@@ -124,7 +124,62 @@ private void processSelectedKey(SelectionKey k, AbstractNioChannel ch) {
 
 。而OP_CONNECT事件应该是发生在当我们的OP_ACCEPT正常执行完毕后，客户端和服务端成功建立起连接的时候而OP_WRITE事件表示已经读完数据要回写数据的时候进行的操作。
 
-然后unsafe的read事件将OP_ACCEP和OP_READ的操作都交给unsafe来进行，unfafe指向的就是我们之前所说的NioMessageUnsafe,具体事件的流向如下，
+然后unsafe的read事件将OP_ACCEP和OP_READ的操作都交给unsafe来进行，unfafe指向的就是我们之前所说的NioMessageUnsafe，但是对于READ事件的并不是这个NioMessageUnsafe，我们先看看这个read方法的执行
+
+```java
+public void read() {//此时对应着server启动的channel及unsafe，pipeline
+    assert eventLoop().inEventLoop();
+    final ChannelConfig config = config();
+    final ChannelPipeline pipeline = pipeline();
+    final RecvByteBufAllocator.Handle allocHandle = unsafe().recvBufAllocHandle();
+    allocHandle.reset(config);
+
+    boolean closed = false;
+    Throwable exception = null;
+    try{
+        do {
+            //readBuf处理
+            int localRead = doReadMessages(readBuf);
+            allocHandle.incMessagesRead(localRead);
+        } while (allocHandle.continueReading());
+        int size = readBuf.size();
+        for (int i = 0; i < size; i ++) {
+            readPending = false;
+            //触发fireChannelRead事件 - 通过pipeline调用ServerBootstrapAcceptor的channelRead方法，然后在通过childHandler回调我们自定义的handler方法
+            pipeline.fireChannelRead(readBuf.get(i));
+        }
+        readBuf.clear();
+        allocHandle.readComplete();
+        //同理通过pipeline调用readComplate方法
+        pipeline.fireChannelReadComplete();
+       
+    } finally {
+        if (!readPending && !config.isAutoRead()) {
+            removeReadOp();//移除read事件
+        }
+    }
+}
+```
+
+上面的代码我进行了简化，主要目的是为了减少其他特殊情况的考虑，这样更能清楚的了解主流程，可以看到大概做了两件事
+
+1.为了readBuf进行注册，注册其实是channel
+
+2.触发pipeline对应的事件（注册channelRead事件以及channelRead注册完成的事件），这个pipeline指向的是server启动对应的pipeline。我们应该还记得我们那时候会注册一个`ServerBootstrapAcceptor`。
+
+首先看第一点我们doReadMessages，这个感觉像是`读取`消息的方法到底是干嘛的。。。
+
+```java
+protected int doReadMessages(List<Object> buf) throws Exception {
+    SocketChannel ch = SocketUtils.accept(javaChannel());
+    buf.add(new NioSocketChannel(this, ch));
+    return 1;
+}
+```
+
+其实并不是为了读取消息，而是向列表中注册一个channel，注意这个channel和我们server启动时候的注册的不同。
+
+然后就是pipeline调用过程了，这里先不做详细的解读,具体事件的流向如下，
 
 ![](images/client-register-processing.png)
 
@@ -161,7 +216,7 @@ public void channelRead(ChannelHandlerContext ctx, Object msg) {
 }
 ```
 
-从上文中可以看到，我们在ServerBootstrapAcceptor中的处理极其像我们netty启动时候给group的注册过程，只不过将group的对象换成了childGroup来操作。明白了netty启动时候的注册逻辑，那么这里也非常容易的进行理解，注册了一个如果处理不成功则进行关闭的监听器。
+从上文中可以看到，我们在ServerBootstrapAcceptor中的处理极其像我们netty启动时候给group的注册过程，只不过将group的对象换成了childGroup来操作。channel也换成了NioSocketChannel对象了。明白了netty启动时候的注册逻辑，那么这里也非常容易的进行理解，注册了一个如果处理不成功则进行关闭的监听器。
 
 所以我们还是要往childGroup的注册方法里去看，那么其实整体上的操作都差不多，逻辑还是会回到我们的`AbstractUnsafe#register0`方法来进行后续的处理，这里需要留意一下里面的`invokeHandlerAddedIfNeeded`方法。
 
@@ -250,11 +305,79 @@ private boolean initChannel(ChannelHandlerContext ctx) throws Exception {
 
 
 
-从BUG出可以看到这里并没有我们channelInitializer，具体原因有如下几点
+从DEBUG出可以看到这里并没有我们channelInitializer，具体原因有如下几点
 
-1.OP_ACCEPT对应的是NioMessageUnsafe，而OP_READ事件使用的是NioByteUnsafe。那么其实read方法不是同一个read方法
+1.OP_ACCEPT对应的是NioMessageUnsafe，而OP_READ事件使用的是NioSocketChannelUnsafe。那么其实read方法不是同一个read方法.
 
-2.由于不是同一个read方法肯定也不是同一个pipeline，在OP_ACCETP事件会经历两个pipeline
+首先我们在创建或者说启动serverBootStrap的时候会在反射构建NioServerSocketChannel对象的时候回调父类AbstractChannel的构造函数时候构建unsafe为NioMessageUnsafe对象以及pipeline为DefaultChannelPipeline对象。
+
+然后我们在接受客户端连接的OP_ACCEPT方法时候，回调用unsafe.read方法，而在这个方法里面的doReadMessages方法执行时候会触发我们构建子channel。也就是绑定客户端等待READ事件管道
+
+可以看到我们会在这里构建新的channel注册到buf中，这个channel为NioSocketChannel和我们server中的NioServerSocketChannel是有区别的。而子channel就是在上文的`ServerBootstrapAcceptor#channelRead`中被初始化和设置的。
+
+
+
+2.不同的channel所以对应的pipeline也肯定是不同的，父pipeline是用来我们本次注册操作执行`ServerBootstrapAcceptor`的逻辑的，而子pipeline肯定是为了用来处理具体的OP_READ请求的，在我们自定义的ChannelInitializer中会往child pipeline中注册大量解析 信息的handler。
+
+
+
+## read事件
+
+前面我们介绍了对于OP_ACCEPT事件的注册逻辑梳理，由NioMessageUnsafe的read方法作为切入，新创建用来处理READ事件的child channel，并且通过我们在server启动时候注册到pipeline上的`ServerBootstrapAcceptor`来进行我们的初始化，通过一顿猛如虎的操作来回调我们的channelInitializer来讲我们的handler注册到child pipeline中。这是我们处理将channel注册到nio上的另外一大重要事情。
+
+接着上面的话题，既然注册事件已经结束了那么接下来就是客户端进行READ事件的操作了，由于我们这里的unsafe对象已经变成了NioSocketChannelUnsafe对象，所以自然read方法也要跟着变化
+
+```java
+//io.netty.channel.nio.AbstractNioByteChannel.NioByteUnsafe#read
+public final void read() {
+    final ChannelConfig config = config();
+    final ChannelPipeline pipeline = pipeline();
+    final ByteBufAllocator allocator = config.getAllocator();
+    final RecvByteBufAllocator.Handle allocHandle = recvBufAllocHandle();
+    allocHandle.reset(config);
+
+    ByteBuf byteBuf = null;
+    boolean close = false;
+    try {
+        do {//根据config获取对应的缓冲区
+            byteBuf = allocHandle.allocate(allocator);
+            allocHandle.lastBytesRead(doReadBytes(byteBuf));//
+            if (allocHandle.lastBytesRead() <= 0) {
+                //释放缓冲区
+                byteBuf.release();
+                byteBuf = null;
+                close = allocHandle.lastBytesRead() < 0;
+                if (close) {
+                    // There is nothing left to read as we received an EOF.
+                    readPending = false;
+                }
+                break;
+            }
+            //增加一条
+            allocHandle.incMessagesRead(1);
+            readPending = false;
+            //调用pipeline的channelRead事件
+            pipeline.fireChannelRead(byteBuf);
+            byteBuf = null;
+        } while (allocHandle.continueReading());
+        //读完成，并处罚pipeline的ChannelComplate事件
+        allocHandle.readComplete();
+        pipeline.fireChannelReadComplete();
+
+        if (close) {
+            closeOnRead(pipeline);
+        }
+    } catch (Throwable t) {
+        handleReadException(pipeline, byteBuf, t, close, allocHandle);
+    } finally {
+        if (!readPending && !config.isAutoRead()) {
+            removeReadOp();
+        }
+    }
+}
+```
+
+上面精简了代码其实也描述的比较清楚了，就是按照我们在channelConfig中配置的策略，然后将我们的数据从channel读取到byteBuf中，并且调用pipeLine来触发fireChannelRead事件。这个pipeline的链式调用就会进入到我们的实现中，然后我们就可以根据我们自己的逻辑对其进行处理
 
 
 
